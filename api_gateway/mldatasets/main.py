@@ -27,6 +27,7 @@ def re_encode_img(content: str) -> str:
 @app.post('/form_files',status_code=status.HTTP_201_CREATED)
 async def image_upload_multiple(data:FileUploadRequest):
     try:
+        print(data.file_name)
         for i in data.files:
             if i['content_type'].split('/')[0] == 'image':
                 print("image file actins started")

@@ -203,39 +203,107 @@ async def handle_authentication(
         raise AuthenticationError(str(e))
 
 async def process_payload(payload_key: str, kwargs: Dict[str, Any], form_data: bool = False) -> Optional[Any]:
-    
-    print("Processing payload:", kwargs)
-    payload_obj = kwargs.get(payload_key)
-    
-    if not payload_obj:
+    try:
+        if not kwargs:
+            return {} if form_data else None
+            
+        payload_obj = kwargs.get(payload_key)
+        
+        if not payload_obj:
+            if form_data:
+                return await process_form_data(kwargs)
+            return kwargs
+
         if form_data:
+            if isinstance(payload_obj, dict):
+                return await process_form_data(payload_obj)
             return await process_form_data(kwargs)
-        return kwargs
-
-    if form_data:
-        return await process_form_data(payload_obj if isinstance(payload_obj, dict) else kwargs)
-    
-    return payload_obj.model_dump() if isinstance(payload_obj, BaseModel) else payload_obj
-
+        
+        return (
+            payload_obj.model_dump() 
+            if isinstance(payload_obj, BaseModel) 
+            else payload_obj
+        )
+        
+    except Exception as e:
+        # If there's an error in processing, return empty dict for form data
+        if form_data:
+            return {}
+        raise APIError(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Error processing payload: {str(e)}"
+        )
 async def process_form_data(data: Dict) -> Dict:
+    """
+    Process form data including files, handling empty cases and string inputs.
+    
+    Args:
+        data (Dict): The input form data dictionary
+        
+    Returns:
+        Dict: Processed form data with encoded files and handled empty cases
+    """
+    if not data:
+        return {}
+        
     processed_data = {}
     for key, value in data.items():
-        if isinstance(value, list) and all(isinstance(f, (UploadFile, StarletteUploadFile)) for f in value):
+        # Handle list inputs
+        if isinstance(value, list):
             processed_data[key] = []
-            for file in value:
-                file_content = await file.read()
-                await file.seek(0)  
-                processed_data[key].append({
-                    'filename': file.filename,
+            
+            # Empty list case
+            if not value:
+                continue
+                
+            # Check if list contains files
+            if any(isinstance(f, (UploadFile, StarletteUploadFile)) for f in value):
+                for file in value:
+                    if not isinstance(file, (UploadFile, StarletteUploadFile)):
+                        # Skip non-file items in the list
+                        continue
+                        
+                    try:
+                        file_content = await file.read()
+                        await file.seek(0)
+                        processed_data[key].append({
+                            'filename': file.filename,
+                            'content': base64.b64encode(file_content).decode('utf-8'),
+                            'content_type': file.content_type or 'application/octet-stream'
+                        })
+                    except Exception as e:
+                        continue
+            else:
+                # If no files in list, keep original values
+                processed_data[key] = value
+                
+        # Handle single file case
+        elif isinstance(value, (UploadFile, StarletteUploadFile)):
+            try:
+                file_content = await value.read()
+                await value.seek(0)
+                processed_data[key] = {
+                    'filename': value.filename,
                     'content': base64.b64encode(file_content).decode('utf-8'),
-                    'content_type': file.content_type
-                })
-        
-        elif not value:
-            processed_data[key] = []
-            continue
+                    'content_type': value.content_type or 'application/octet-stream'
+                }
+            except Exception as e:
+                processed_data[key] = None
+                
+        # Handle string or other non-file inputs
+        elif isinstance(value, str):
+            processed_data[key] = value
+            
+        # Handle empty value
+        elif value is None:
+            processed_data[key] = None
+            
+        # Handle Pydantic models
         elif isinstance(value, BaseModel):
             processed_data[key] = value.model_dump()
+            
+        # Handle all other cases
         else:
             processed_data[key] = value
+            
     return processed_data
