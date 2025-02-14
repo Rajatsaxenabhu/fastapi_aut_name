@@ -109,7 +109,7 @@ def route(
     service_header_generator: str = 'auth.generate_request_header',
     response_model: Optional[str] = None,
     response_list: bool = False,
-    files: bool = False
+    form_data: bool = False
 ):
     """Enhanced route decorator with improved organization and error handling"""
     
@@ -150,7 +150,7 @@ def route(
             try:
                 method = request.method.lower()
                 url = f'{service_url}{request.url.path}'
-                payload = await process_payload(files, payload_key, kwargs)
+                payload = await process_payload(payload_key, kwargs, form_data)
            
                 resp_data, status_code_from_service = await HTTPClient.make_request(
                     url=url,
@@ -205,59 +205,45 @@ async def handle_authentication(
     except Exception as e:
         raise AuthenticationError(str(e))
 
-async def process_payload(files: bool, payload_key: str, kwargs: Dict[str, Any]) -> Optional[Any]:
-   
-    print("okay",type(kwargs.get(payload_key)))
+async def process_payload(payload_key: str, kwargs: Dict[str, Any], form_data: bool = False) -> Optional[Any]:
+    """Process payload handling both form data (including files) and JSON"""
+    print("Processing payload:", kwargs)
     payload_obj = kwargs.get(payload_key)
+    
     if not payload_obj:
-        return None
+        if form_data:
+            return await process_form_data(kwargs)
+        return kwargs
 
-    if files:
-        try:
-            if isinstance(payload_obj, list):
-                
-                if all(isinstance(item, StarletteUploadFile) for item in payload_obj):
-                    processed_files = []
-                    for file in payload_obj:
-                        file_content = await file.read()
-                       
-                        processed_files.append({
-                            'filename': file.filename,
-                            'content': base64.b64encode(file_content).decode('utf-8'),
-                            'content_type': file.content_type
-                        })
-                    return {payload_key: processed_files}
-                
-            elif isinstance(payload_obj, dict):
-                # Handle dictionary with FastAPI UploadFiles
-                processed_payload = {}
-                for key, value in payload_obj.items():
-                    if isinstance(value, UploadFile):
-                        file_content = await value.read()
-                        processed_payload[key] = {
-                            'filename': value.filename,
-                            'content': base64.b64encode(file_content).decode('utf-8'),
-                            'content_type': value.content_type
-                        }
-                    elif isinstance(value, list) and all(isinstance(f, UploadFile) for f in value):
-                        processed_payload[key] = []
-                        for file in value:
-                            file_content = await file.read()
-                            processed_payload[key].append({
-                                'filename': file.filename,
-                                'content': base64.b64encode(file_content).decode('utf-8'),
-                                'content_type': file.content_type
-                            })
-                    else:
-                        processed_payload[key] = value
-                return processed_payload
-                
-            elif isinstance(payload_obj, BaseModel):
-                # Handle Pydantic model
-                return payload_obj.model_dump()
-                
-        except Exception as e:
-            print(f"Error processing files: {str(e)}")  # Debug logging
-            raise RequestError(f"Failed to process file upload: {str(e)}")
-    else:
-        return payload_obj.model_dump() if isinstance(payload_obj, BaseModel) else payload_obj
+    if form_data:
+        return await process_form_data(payload_obj if isinstance(payload_obj, dict) else kwargs)
+    
+    return payload_obj.model_dump() if isinstance(payload_obj, BaseModel) else payload_obj
+
+async def process_form_data(data: Dict) -> Dict:
+    """Process form data fields including files"""
+    processed_data = {}
+    for key, value in data.items():
+        if isinstance(value, (UploadFile, StarletteUploadFile)):
+            file_content = await value.read()
+            await value.seek(0)  # Reset file pointer
+            processed_data[key] = {
+                'filename': value.filename,
+                'content': base64.b64encode(file_content).decode('utf-8'),
+                'content_type': value.content_type
+            }
+        elif isinstance(value, list) and all(isinstance(f, (UploadFile, StarletteUploadFile)) for f in value):
+            processed_data[key] = []
+            for file in value:
+                file_content = await file.read()
+                await file.seek(0)  # Reset file pointer
+                processed_data[key].append({
+                    'filename': file.filename,
+                    'content': base64.b64encode(file_content).decode('utf-8'),
+                    'content_type': file.content_type
+                })
+        elif isinstance(value, BaseModel):
+            processed_data[key] = value.model_dump()
+        else:
+            processed_data[key] = value
+    return processed_data

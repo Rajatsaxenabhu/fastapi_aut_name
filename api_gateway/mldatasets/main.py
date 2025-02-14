@@ -9,13 +9,10 @@ from typing import Any
 import base64
 app=FastAPI()
 
-class FileData(BaseModel):
-    filename: str
-    content: str  
-    content_type: str
 
 class FileUploadRequest(BaseModel):
-    single_file: List[FileData]
+    file_name: str
+    files: List[dict]
 
 
 def re_encode(content: str) -> str:  
@@ -26,36 +23,14 @@ def re_encode_img(content: str) -> str:
     encoded= base64.b64decode(content)
     return encoded
 
-@app.post('/text_file',status_code=status.HTTP_201_CREATED)
-async def file_upload_multiple(request:FileUploadRequest):
+
+
+@app.post('/form_files',status_code=status.HTTP_201_CREATED)
+async def image_upload_multiple(data:FileUploadRequest):
     try:
-        print(len(request.single_file))
-        for fl in request.single_file:
-            print("filename",fl.filename)
-            print("content",re_encode(fl.content))
-        return JSONResponse(content={"message":"text upload successfully"},status_code=status.HTTP_201_CREATED)
+        print("iniside  the data")
+        print("data",data.file_name)
+        return JSONResponse(content={"message":"formdata successful"},status_code=status.HTTP_201_CREATED)
     except Exception as err:
-        print(str(err))
-        return JSONResponse(content={"message":"text upload failed"},status_code=status.HTTP_400_BAD_REQUEST)
-
-@app.post('/image_files',status_code=status.HTTP_201_CREATED)
-async def image_upload_multiple(request:FileUploadRequest):
-    print("inside the image uploads")
-    save_path = Path('media')
-    save_path.mkdir(exist_ok=True)
-    try:
-        print(len(request.single_file))
-        for fl in request.single_file:
-            print("filename",fl.filename)
-            img_data=re_encode_img(fl.content)
-            with open(f"media/{fl.filename}", "wb") as f:
-                f.write(img_data)
-        return JSONResponse(content={"message":"text upload successfully"},status_code=status.HTTP_201_CREATED)
-    except Exception as err:
-        print(str(err))
-        return JSONResponse(content={"message":"image upload failed"},status_code=status.HTTP_400_BAD_REQUEST)
-
-
-@app.post('/multiple_files',status_code=status.HTTP_201_CREATED)
-async def multi_files_upload():
-    pass
+        print("excepr from ml dataet ",str(err))
+        return JSONResponse(content={"message":"form data not success"},status_code=status.HTTP_400_BAD_REQUEST)

@@ -1,9 +1,10 @@
-from fastapi import FastAPI, status, Request, Response,UploadFile,File
+from fastapi import FastAPI, status, Request, Response,UploadFile,File,Form
 from typing import Tuple,List
-import httpx
+from schema.mldataset import Formdata
 from conf.conf import settings
 from core import route
 from schema.auth import UpdateSchema,LoginSchema,DeleteSchema,RegisterSchema
+from  typing import Annotated
 
 app = FastAPI()
 @route(
@@ -55,28 +56,19 @@ async def delete(delete_id: DeleteSchema,request: Request, response: Response):
 async def update(update_data:UpdateSchema,request: Request, response: Response):
     pass
 
-@route(
-    request_method=app.post,
-    path="/text_file",
-    status_code=status.HTTP_201_CREATED,
-    service_url=settings.MLDATASET_SERVICE_URL,
-    payload_key="single_file",
-    authentication_required=False,
-    response_model='',
-    files=True
-)
-async def file_upload_multiple(request:Request,response:Response,single_file: List[UploadFile] = File(...),):
-    pass
 
 @route(
     request_method=app.post,
-    path="/image_files",
+    path="/form_files",
     status_code=status.HTTP_201_CREATED,
     service_url=settings.MLDATASET_SERVICE_URL,
-    payload_key="single_file",
+    payload_key="form_data",
     authentication_required=False,
     response_model='',
-    files=True
+    form_data=True
 )
-async def image_upload_multiple(request:Request,response:Response,single_file: List[UploadFile] = File(...),):
+async def image_upload_multiple(request:Request,response:Response,
+                                file_name: Annotated[str, Form()],
+                                files: Annotated[List[UploadFile], File()] = []
+                                ):
     pass
