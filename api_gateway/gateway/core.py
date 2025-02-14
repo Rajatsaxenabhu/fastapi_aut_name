@@ -85,7 +85,6 @@ class HTTPClient:
 class ModuleImporter:
     @staticmethod
     def import_function(method_path: str) -> Callable:
-        """Import function from module path"""
         try:
             module, method = method_path.rsplit('.', 1)
             mod = import_module(module)
@@ -103,7 +102,6 @@ def route(
     payload_key: str,
     service_url: str,
     authentication_required: bool = False,
-    post_processing_func: Optional[str] = None,
     authentication_token_decoder: str = 'auth.decode_access_token',
     service_authorization_checker: str = 'auth.is_admin_user',
     service_header_generator: str = 'auth.generate_request_header',
@@ -111,7 +109,7 @@ def route(
     response_list: bool = False,
     form_data: bool = False
 ):
-    """Enhanced route decorator with improved organization and error handling"""
+
     
     if response_model:
         try:
@@ -120,7 +118,6 @@ def route(
                 response_model_class = List[response_model_class]
         except Exception:
             raise RequestError(
-                "Failed to import response model",
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
     else:
@@ -179,7 +176,7 @@ async def handle_authentication(
     header_generator_path: str,
     service_headers: Dict[str, str]
 ) -> None:
-    """Handle authentication and authorization"""
+
     authorization = request.headers.get('authorization')
     if not authorization:
         raise AuthenticationError("Authorization header missing")
@@ -192,7 +189,7 @@ async def handle_authentication(
             authorization_check = ModuleImporter.import_function(auth_checker_path)
             if not authorization_check(token_payload):
                 raise AuthenticationError(
-                    "Insufficient permissions",
+                    
                     status_code=status.HTTP_403_FORBIDDEN
                 )
 
@@ -206,7 +203,7 @@ async def handle_authentication(
         raise AuthenticationError(str(e))
 
 async def process_payload(payload_key: str, kwargs: Dict[str, Any], form_data: bool = False) -> Optional[Any]:
-    """Process payload handling both form data (including files) and JSON"""
+    
     print("Processing payload:", kwargs)
     payload_obj = kwargs.get(payload_key)
     
@@ -221,27 +218,22 @@ async def process_payload(payload_key: str, kwargs: Dict[str, Any], form_data: b
     return payload_obj.model_dump() if isinstance(payload_obj, BaseModel) else payload_obj
 
 async def process_form_data(data: Dict) -> Dict:
-    """Process form data fields including files"""
     processed_data = {}
     for key, value in data.items():
-        if isinstance(value, (UploadFile, StarletteUploadFile)):
-            file_content = await value.read()
-            await value.seek(0)  # Reset file pointer
-            processed_data[key] = {
-                'filename': value.filename,
-                'content': base64.b64encode(file_content).decode('utf-8'),
-                'content_type': value.content_type
-            }
-        elif isinstance(value, list) and all(isinstance(f, (UploadFile, StarletteUploadFile)) for f in value):
+        if isinstance(value, list) and all(isinstance(f, (UploadFile, StarletteUploadFile)) for f in value):
             processed_data[key] = []
             for file in value:
                 file_content = await file.read()
-                await file.seek(0)  # Reset file pointer
+                await file.seek(0)  
                 processed_data[key].append({
                     'filename': file.filename,
                     'content': base64.b64encode(file_content).decode('utf-8'),
                     'content_type': file.content_type
                 })
+        
+        elif not value:
+            processed_data[key] = []
+            continue
         elif isinstance(value, BaseModel):
             processed_data[key] = value.model_dump()
         else:
